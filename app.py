@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import pytz # Library untuk zona waktu
+import pytz
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -38,7 +38,6 @@ if client:
         sh = None
 
     if sh:
-        # Menentukan zona waktu WIB (Asia/Jakarta)
         tz_wib = pytz.timezone('Asia/Jakarta')
         now_wib = datetime.now(tz_wib)
 
@@ -96,19 +95,17 @@ if client:
         accounts = sorted(accounts)
 
         # --- Menu Navigasi ---
-        menu = st.sidebar.selectbox("Pilih Menu", ["Catat Transaksi Baru", "Lihat Riwayat & Anggaran"])
+        menu = st.sidebar.selectbox("Pilih Menu", ["Catat Transaksi Baru", "Lihat Riwayat & Anggaran", "Edit / Hapus Transaksi"])
 
         if menu == "Catat Transaksi Baru":
             st.header("📝 Input Transaksi Harian")
             
-            # Input Tanggal dan Jam Real-time sesuai waktu WIB
             col_date, col_time = st.columns(2)
             with col_date:
                 tgl = st.date_input("Tanggal", now_wib.date())
             with col_time:
                 waktu = st.time_input("Jam & Menit", now_wib.time())
             
-            # Pilihan Tipe Transaksi dengan Default Placeholder
             tipe_options = ["--Pilih Tipe Transaksi--", "Pengeluaran", "Pemasukan"]
             tipe = st.selectbox("Tipe Transaksi", tipe_options)
             
@@ -121,12 +118,10 @@ if client:
                 global_categories = expense_globals
                 current_dict = expense_dict
 
-            # Pilihan Kategori Global dengan Default Placeholder
             kategori_global = "--Pilih Kategori--"
             if tipe != "--Pilih Tipe Transaksi--":
                 kategori_global = st.selectbox("Kategori Global", ["--Pilih Kategori--"] + global_categories)
 
-            # Menyiapkan Sub-Kategori jika Kategori Global sudah dipilih
             sub_categories_list = []
             if kategori_global != "--Pilih Kategori--":
                 sub_categories_list = sorted(list(current_dict.get(kategori_global, set())))
@@ -137,14 +132,12 @@ if client:
 
             with st.form("transaction_form", clear_on_submit=False):
                 nominal = st.number_input("Nominal (Rp)", min_value=0, step=1000)
-                
                 akun = st.selectbox("Akun / Sumber Dana", ["--Pilih Akun--"] + accounts)
                 catatan = st.text_input("Catatan Tambahan (Opsional)")
                 
                 submit_button = st.form_submit_button(label="Simpan Transaksi")
                 
                 if submit_button:
-                    # Validasi input lengkap
                     if tipe == "--Pilih Tipe Transaksi--":
                         st.warning("⚠️ Silakan pilih Tipe Transaksi terlebih dahulu.")
                     elif kategori_global == "--Pilih Kategori--":
@@ -162,10 +155,9 @@ if client:
                                 trans_sheet.append_row(["Tanggal", "Jam", "Tipe", "Kategori Global", "Sub-Kategori", "Nominal", "Akun", "Catatan"])
                             
                             sub_val = "" if sub_kategori == "--Tidak Ada / Opsional--" else sub_kategori
-                            
                             row_data = [str(tgl), waktu.strftime('%H:%M'), tipe, kategori_global, sub_val, nominal, akun, catatan]
                             trans_sheet.append_row(row_data)
-                            st.success(f"✅ Transaksi pada pukul {waktu.strftime('%H:%M')} berhasil dicatat dan dikirim ke Google Sheets!")
+                            st.success(f"✅ Transaksi pada pukul {waktu.strftime('%H:%M')} berhasil dicatat!")
                         except Exception as e:
                             st.error(f"Gagal menyimpan ke Google Sheets: {e}")
 
@@ -206,3 +198,60 @@ if client:
                     st.info("Tab 'Anggaran' kosong.")
             except Exception as e:
                 st.info("Memuat rekap anggaran...")
+
+        elif menu == "Edit / Hapus Transaksi":
+            st.header("✏️ Edit atau Hapus Transaksi")
+            try:
+                trans_sheet = sh.worksheet("Transactions")
+                all_values = trans_sheet.get_all_values()
+                
+                if len(all_values) > 1:
+                    header = all_values[0]
+                    rows = all_values[1:]
+                    
+                    # Membuat list pilihan untuk ditampilkan di selectbox (menampilkan nomor baris dan ringkasan isi)
+                    row_options = []
+                    for idx, r in enumerate(rows, start=2): # Baris di sheets dimulai dari baris ke-2
+                        summary = f"Baris {idx} | Tgl: {r[0]} | {r[2]} | {r[3]} | Rp {r[5]}"
+                        row_options.append((idx, summary))
+                    
+                    selected_item = st.selectbox("Pilih Transaksi yang Ingin Diedit/Dihapus", row_options, format_func=lambda x: x[1])
+                    
+                    if selected_item:
+                        target_row_idx = selected_item[0]
+                        current_data = trans_sheet.row_values(target_row_idx)
+                        
+                        st.markdown("---")
+                        st.subheader(f"Edit Data (Baris ke-{target_row_idx})")
+                        
+                        with st.form("edit_form"):
+                            edit_tgl = st.date_input("Tanggal", datetime.strptime(current_data[0], "%Y-%m-%d").date() if current_data[0] else now_wib.date())
+                            edit_jam = current_data[1] if len(current_data) > 1 else "12:00"
+                            edit_tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"], index=0 if current_data[2] == "Pengeluaran" else 1)
+                            edit_kat = st.text_input("Kategori Global", value=current_data[3] if len(current_data) > 3 else "")
+                            edit_subkat = st.text_input("Sub-Kategori", value=current_data[4] if len(current_data) > 4 else "")
+                            edit_nominal = st.number_input("Nominal (Rp)", min_value=0, step=1000, value=int(current_data[5]) if len(current_data) > 5 and current_data[5].isdigit() else 0)
+                            edit_akun = st.text_input("Akun", value=current_data[6] if len(current_data) > 6 else "")
+                            edit_catatan = st.text_input("Catatan", value=current_data[7] if len(current_data) > 7 else "")
+                            
+                            col_update, col_delete = st.columns(2)
+                            with col_update:
+                                update_btn = st.form_submit_button("💾 Perbarui Transaksi")
+                            with col_delete:
+                                delete_btn = st.form_submit_button("🗑️ Hapus Transaksi")
+                            
+                            if update_btn:
+                                updated_row = [str(edit_tgl), edit_jam, edit_tipe, edit_kat, edit_subkat, str(edit_nominal), edit_akun, edit_catatan]
+                                # Update baris di Google Sheets
+                                trans_sheet.update(f"A{target_row_idx}:H{target_row_idx}", [updated_row])
+                                st.success(f"✅ Transaksi pada baris ke-{target_row_idx} berhasil diperbarui!")
+                                st.rerun()
+                                
+                            if delete_btn:
+                                trans_sheet.delete_rows(target_row_idx)
+                                st.success(f"🗑️ Transaksi pada baris ke-{target_row_idx} berhasil dihapus!")
+                                st.rerun()
+                else:
+                    st.info("Belum ada data transaksi yang dapat diedit.")
+            except Exception as e:
+                st.error(f"Gagal memuat data transaksi: {e}")
