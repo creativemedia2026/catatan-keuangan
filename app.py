@@ -38,24 +38,33 @@ if client:
         sh = None
 
     if sh:
-        # 1. Mengambil Kategori Berdasarkan Tipe dari Tab 'Categories'
-        category_data = []
+        # 1. Mengambil Kategori Berdasarkan Tipe secara Presisi (Kolom A & B)
+        expense_categories = []
+        income_categories = []
+        
         try:
             cat_sheet = sh.worksheet("Categories")
-            category_data = cat_sheet.get_all_records()
-        except Exception:
-            pass
+            # Mengambil semua baris mulai dari baris ke-2 (skip header)
+            all_rows = cat_sheet.get_all_values()[1:] 
+            
+            for row in all_rows:
+                if len(row) >= 2:
+                    cat_name = row[0].strip()
+                    cat_type = row[1].strip().lower()
+                    
+                    if cat_name:
+                        if "pemasukan" in cat_type:
+                            income_categories.append(cat_name)
+                        elif "pengeluaran" in cat_type:
+                            expense_categories.append(cat_name)
+        except Exception as e:
+            st.warning(f"Gagal membaca kategori dari Sheets: {e}")
 
-        # Fallback jika sheet categories kosong
-        if not category_data:
-            category_data = [
-                {"Kategori": "Gaji", "Tipe": "Pemasukan"},
-                {"Kategori": "Other Income", "Tipe": "Pemasukan"},
-                {"Kategori": "Transfer Masuk", "Tipe": "Pemasukan"},
-                {"Kategori": "Bensin", "Tipe": "Pengeluaran"},
-                {"Kategori": "Anggaran Makan", "Tipe": "Pengeluaran"},
-                {"Kategori": "Persepuluhan", "Tipe": "Pengeluaran"}
-            ]
+        # Fallback jika kosong
+        if not expense_categories:
+            expense_categories = ["Bensin", "Anggaran Makan", "Persepuluhan"]
+        if not income_categories:
+            income_categories = ["Gaji", "Bunga Tabungan", "Other Income", "Transfer Masuk", "Penggantian"]
 
         # 2. Mengambil Daftar Akun dari Tab 'Accounts'
         accounts = []
@@ -68,7 +77,7 @@ if client:
             pass
         
         if not accounts:
-            accounts = ["BCA", "Gopay", "Dana", "Cash", "BPR WM", "Lainnya"]
+            accounts = ["BCA", "Gopay", "Dana", "Cash", "BPR WM"]
 
         # --- Menu Navigasi ---
         menu = st.sidebar.selectbox("Pilih Menu", ["Catat Transaksi Baru", "Lihat Riwayat & Anggaran"])
@@ -82,20 +91,11 @@ if client:
                 # Pilihan Tipe Transaksi
                 tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"])
                 
-                # Filter kategori yang lebih fleksibel (mencari kunci kolom dengan case-insensitive)
-                filtered_categories = []
-                for row in category_data:
-                    # Ambil nilai kunci secara fleksibel terlepas dari huruf besar/kecil header
-                    row_lower = {k.lower().strip(): str(v).strip() for k, v in row.items()}
-                    cat_val = row_lower.get("kategori", "")
-                    type_val = row_lower.get("tipe", "")
-                    
-                    if cat_val and type_val.lower() == tipe.lower():
-                        filtered_categories.append(cat_val)
-                
-                # Jika hasil filter kosong, gunakan fallback semua kategori yang ada
-                if not filtered_categories:
-                    filtered_categories = [str(list(row.values())[0]) for row in category_data if row]
+                # Menentukan pilihan kategori berdasarkan tipe yang dipilih secara instan
+                if tipe == "Pemasukan":
+                    filtered_categories = income_categories
+                else:
+                    filtered_categories = expense_categories
 
                 kategori = st.selectbox("Kategori", filtered_categories)
                 nominal = st.number_input("Nominal (Rp)", min_value=0, step=1000)
