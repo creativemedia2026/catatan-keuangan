@@ -42,15 +42,16 @@ if client:
         category_data = []
         try:
             cat_sheet = sh.worksheet("Categories")
-            # Mengambil semua baris sebagai list of dict atau records
             category_data = cat_sheet.get_all_records()
         except Exception:
             pass
 
-        # Fallback jika sheet categories belum memiliki Kolom Tipe
+        # Fallback jika sheet categories kosong
         if not category_data:
             category_data = [
                 {"Kategori": "Gaji", "Tipe": "Pemasukan"},
+                {"Kategori": "Other Income", "Tipe": "Pemasukan"},
+                {"Kategori": "Transfer Masuk", "Tipe": "Pemasukan"},
                 {"Kategori": "Bensin", "Tipe": "Pengeluaran"},
                 {"Kategori": "Anggaran Makan", "Tipe": "Pengeluaran"},
                 {"Kategori": "Persepuluhan", "Tipe": "Pengeluaran"}
@@ -81,14 +82,20 @@ if client:
                 # Pilihan Tipe Transaksi
                 tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"])
                 
-                # Filter kategori secara dinamis berdasarkan Tipe yang dipilih
-                filtered_categories = [
-                    row["Kategori"] for row in category_data 
-                    if str(row.get("Tipe", "")).strip().lower() == tipe.lower()
-                ]
+                # Filter kategori yang lebih fleksibel (mencari kunci kolom dengan case-insensitive)
+                filtered_categories = []
+                for row in category_data:
+                    # Ambil nilai kunci secara fleksibel terlepas dari huruf besar/kecil header
+                    row_lower = {k.lower().strip(): str(v).strip() for k, v in row.items()}
+                    cat_val = row_lower.get("kategori", "")
+                    type_val = row_lower.get("tipe", "")
+                    
+                    if cat_val and type_val.lower() == tipe.lower():
+                        filtered_categories.append(cat_val)
                 
+                # Jika hasil filter kosong, gunakan fallback semua kategori yang ada
                 if not filtered_categories:
-                    filtered_categories = [row["Kategori"] for row in category_data] # Cadangan jika kolom tipe kosong
+                    filtered_categories = [str(list(row.values())[0]) for row in category_data if row]
 
                 kategori = st.selectbox("Kategori", filtered_categories)
                 nominal = st.number_input("Nominal (Rp)", min_value=0, step=1000)
