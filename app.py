@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import pytz # Library untuk zona waktu
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -37,6 +38,10 @@ if client:
         sh = None
 
     if sh:
+        # Menentukan zona waktu WIB (Asia/Jakarta)
+        tz_wib = pytz.timezone('Asia/Jakarta')
+        now_wib = datetime.now(tz_wib)
+
         # 1. Mengambil Kategori Global & Sub-Kategori dari Tab 'Categories'
         category_rows = []
         try:
@@ -96,12 +101,12 @@ if client:
         if menu == "Catat Transaksi Baru":
             st.header("📝 Input Transaksi Harian")
             
-            # Input Tanggal dan Jam Real-time (bisa disesuaikan manual)
+            # Input Tanggal dan Jam Real-time sesuai waktu WIB
             col_date, col_time = st.columns(2)
             with col_date:
-                tgl = st.date_input("Tanggal", datetime.now())
+                tgl = st.date_input("Tanggal", now_wib.date())
             with col_time:
-                waktu = st.time_input("Jam & Menit", datetime.now())
+                waktu = st.time_input("Jam & Menit", now_wib.time())
             
             # Pilihan Tipe Transaksi dengan Default Placeholder
             tipe_options = ["--Pilih Tipe Transaksi--", "Pengeluaran", "Pemasukan"]
@@ -157,9 +162,6 @@ if client:
                                 trans_sheet.append_row(["Tanggal", "Jam", "Tipe", "Kategori Global", "Sub-Kategori", "Nominal", "Akun", "Catatan"])
                             
                             sub_val = "" if sub_kategori == "--Tidak Ada / Opsional--" else sub_kategori
-                            
-                            # Menggabungkan tanggal dan waktu
-                            timestamp_str = f"{tgl} {waktu.strftime('%H:%M:%S')}"
                             
                             row_data = [str(tgl), waktu.strftime('%H:%M'), tipe, kategori_global, sub_val, nominal, akun, catatan]
                             trans_sheet.append_row(row_data)
