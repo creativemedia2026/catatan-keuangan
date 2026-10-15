@@ -45,8 +45,7 @@ if client:
         except Exception as e:
             st.warning(f"Gagal membaca kategori: {e}")
 
-        # Parsing data kategori (Global, Sub-Kategori, Tipe)
-        expense_dict = {} # Format: {Kategori_Global: [sub1, sub2, ...]}
+        expense_dict = {} 
         income_dict = {}
         
         for row in category_rows:
@@ -62,7 +61,6 @@ if client:
                     if sub_cat:
                         target_dict[global_cat].add(sub_cat)
 
-        # Fallback cadangan jika sheet kosong
         if not expense_dict:
             expense_dict = {
                 "Transportasi": {"Bensin", "Parkir"},
@@ -74,7 +72,6 @@ if client:
                 "Lain-lain": {"Other Income", "Transfer Masuk"}
             }
 
-        # Urutkan abjad untuk Kategori Global
         expense_globals = sorted(list(expense_dict.keys()))
         income_globals = sorted(list(income_dict.keys()))
 
@@ -91,7 +88,6 @@ if client:
         if not accounts:
             accounts = ["BCA", "Gopay", "Dana", "Cash", "BPR WM"]
         
-        # Urutkan abjad untuk Akun
         accounts = sorted(accounts)
 
         # --- Menu Navigasi ---
@@ -100,7 +96,12 @@ if client:
         if menu == "Catat Transaksi Baru":
             st.header("📝 Input Transaksi Harian")
             
-            tgl = st.date_input("Tanggal", datetime.now())
+            # Input Tanggal dan Jam Real-time (bisa disesuaikan manual)
+            col_date, col_time = st.columns(2)
+            with col_date:
+                tgl = st.date_input("Tanggal", datetime.now())
+            with col_time:
+                waktu = st.time_input("Jam & Menit", datetime.now())
             
             # Pilihan Tipe Transaksi dengan Default Placeholder
             tipe_options = ["--Pilih Tipe Transaksi--", "Pengeluaran", "Pemasukan"]
@@ -152,15 +153,17 @@ if client:
                             try:
                                 trans_sheet = sh.worksheet("Transactions")
                             except:
-                                trans_sheet = sh.add_worksheet(title="Transactions", rows=1000, cols=7)
-                                trans_sheet.append_row(["Tanggal", "Tipe", "Kategori Global", "Sub-Kategori", "Nominal", "Akun", "Catatan"])
+                                trans_sheet = sh.add_worksheet(title="Transactions", rows=1000, cols=8)
+                                trans_sheet.append_row(["Tanggal", "Jam", "Tipe", "Kategori Global", "Sub-Kategori", "Nominal", "Akun", "Catatan"])
                             
-                            # Tentukan nilai simpan sub-kategori
                             sub_val = "" if sub_kategori == "--Tidak Ada / Opsional--" else sub_kategori
                             
-                            row_data = [str(tgl), tipe, kategori_global, sub_val, nominal, akun, catatan]
+                            # Menggabungkan tanggal dan waktu
+                            timestamp_str = f"{tgl} {waktu.strftime('%H:%M:%S')}"
+                            
+                            row_data = [str(tgl), waktu.strftime('%H:%M'), tipe, kategori_global, sub_val, nominal, akun, catatan]
                             trans_sheet.append_row(row_data)
-                            st.success("✅ Transaksi berhasil dicatat dan dikirim ke Google Sheets!")
+                            st.success(f"✅ Transaksi pada pukul {waktu.strftime('%H:%M')} berhasil dicatat dan dikirim ke Google Sheets!")
                         except Exception as e:
                             st.error(f"Gagal menyimpan ke Google Sheets: {e}")
 
