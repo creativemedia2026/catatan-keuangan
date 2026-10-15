@@ -38,7 +38,7 @@ if client:
         sh = client.open(SPREADSHEET_NAME)
         
         # Ambil daftar kategori dari Tab 'Categories'
-        cat_sheet = sh.worksheet("Kategori")
+        cat_sheet = sh.worksheet("Categories")
         categories = cat_sheet.col_values(1)[1:] # Ambil baris ke-2 ke bawah (skip header)
         if not categories:
             categories = ["Makan", "Bensin", "Gaji", "Lainnya"]
