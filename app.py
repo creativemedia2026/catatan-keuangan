@@ -29,7 +29,7 @@ def init_connection():
 client = init_connection()
 
 if client:
-    SPREADSHEET_NAME = "Sheet Anggaran" # Pastikan judul file Google Sheets kamu sesuai
+    SPREADSHEET_NAME = "Sheet Anggaran" # Sesuaikan dengan judul file Google Sheets kamu
     
     try:
         sh = client.open(SPREADSHEET_NAME)
@@ -38,30 +38,31 @@ if client:
         sh = None
 
     if sh:
-        # Mengambil kategori secara dinamis dari Tab 'Categories' di Google Sheets
+        # 1. Mengambil Kategori secara dinamis dari Tab 'Categories'
         categories = []
         try:
             cat_sheet = sh.worksheet("Categories")
-            # Mengambil seluruh nilai di Kolom A
             raw_cats = cat_sheet.col_values(1)
-            # Membersihkan data kosong dan mengabaikan baris pertama jika itu judul (header)
             if len(raw_cats) > 1:
                 categories = [cat.strip() for cat in raw_cats[1:] if cat.strip()]
-            elif len(raw_cats) == 1:
-                categories = [raw_cats[0].strip()]
         except Exception:
             pass
         
-        # Jika sheet Categories kosong atau belum ada, gunakan cadangan default
         if not categories:
-            categories = [
-                "Gaji", "Persepuluhan", "Tabungan BPR WM", "Netflix", 
-                "Paketan Smartfren", "Pulsa Indosat", "Paket Internet XL", 
-                "Google Play", "TF BCA", "Topup Dana", "Topup Gopay", 
-                "Topup Flip", "BPJS", "Bensin", "Topup Flazz BCA", 
-                "Topup E-Money Mandiri", "Iuran Piknik", "Tabungan Emas Pegadaian", 
-                "Anggaran Makan", "Lainnya"
-            ]
+            categories = ["Gaji", "Bensin", "Anggaran Makan", "Lainnya"]
+
+        # 2. Mengambil Daftar Akun secara dinamis dari Tab 'Accounts'
+        accounts = []
+        try:
+            acc_sheet = sh.worksheet("Accounts")
+            raw_accs = acc_sheet.col_values(1)
+            if len(raw_accs) > 1:
+                accounts = [acc.strip() for acc in raw_accs[1:] if acc.strip()]
+        except Exception:
+            pass
+        
+        if not accounts:
+            accounts = ["BCA", "Gopay", "Dana", "Cash", "BPR WM", "Lainnya"]
 
         # --- Menu Navigasi ---
         menu = st.sidebar.selectbox("Pilih Menu", ["Catat Transaksi Baru", "Lihat Riwayat & Anggaran"])
@@ -72,9 +73,9 @@ if client:
             with st.form("transaction_form", clear_on_submit=True):
                 tgl = st.date_input("Tanggal", datetime.now())
                 tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"])
-                kategori = st.selectbox("Kategori (Otomatis dari Google Sheets)", categories)
+                kategori = st.selectbox("Kategori", categories)
                 nominal = st.number_input("Nominal (Rp)", min_value=0, step=1000)
-                akun = st.selectbox("Akun / Sumber Dana", ["BCA", "Gopay", "Dana", "Cash", "BPR WM", "Lainnya"])
+                akun = st.selectbox("Akun / Sumber Dana", accounts)
                 catatan = st.text_input("Catatan Tambahan (Opsional)")
                 
                 submit_button = st.form_submit_button(label="Simpan Transaksi")
