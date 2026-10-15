@@ -10,9 +10,8 @@ st.set_page_config(page_title="Pencatatan Keuangan & Anggaran", page_icon="💰"
 st.title("💰 Aplikasi Keuangan & Anggaran Pribadi")
 st.write("Catat pemasukan dan pengeluaran harianmu dengan mudah, terhubung langsung ke Google Sheets!")
 
-# --- Koneksi ke Google Sheets ---
-@st.cache_resource
-def init_connection():
+# --- Koneksi ke Google Sheets (Tanpa Cache untuk Data Sheet agar Selalu Update) ---
+def get_google_sheet_client():
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
         scopes = [
@@ -26,7 +25,7 @@ def init_connection():
         st.error(f"Gagal terhubung ke Google Sheets: {e}")
         return None
 
-client = init_connection()
+client = get_google_sheet_client()
 
 if client:
     SPREADSHEET_NAME = "Sheet Anggaran"
@@ -38,14 +37,13 @@ if client:
         sh = None
 
     if sh:
-        # 1. Mengambil Kategori Berdasarkan Tipe secara Presisi (Kolom A & B)
+        # 1. Mengambil Kategori Berdasarkan Tipe secara Langsung dari Tab 'Categories'
         expense_categories = []
         income_categories = []
         
         try:
             cat_sheet = sh.worksheet("Categories")
-            # Mengambil semua baris mulai dari baris ke-2 (skip header)
-            all_rows = cat_sheet.get_all_values()[1:] 
+            all_rows = cat_sheet.get_all_values()[1:] # Skip header
             
             for row in all_rows:
                 if len(row) >= 2:
@@ -58,11 +56,11 @@ if client:
                         elif "pengeluaran" in cat_type:
                             expense_categories.append(cat_name)
         except Exception as e:
-            st.warning(f"Gagal membaca kategori dari Sheets: {e}")
+            st.warning(f"Gagal membaca kategori: {e}")
 
-        # Fallback jika kosong
+        # Fallback cadangan jika kosong
         if not expense_categories:
-            expense_categories = ["Bensin", "Anggaran Makan", "Persepuluhan"]
+            expense_categories = ["Bensin", "Anggaran Makan"]
         if not income_categories:
             income_categories = ["Gaji", "Bunga Tabungan", "Other Income", "Transfer Masuk", "Penggantian"]
 
@@ -91,7 +89,7 @@ if client:
                 # Pilihan Tipe Transaksi
                 tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"])
                 
-                # Menentukan pilihan kategori berdasarkan tipe yang dipilih secara instan
+                # Pemilihan kategori dinamis berdasarkan pilihan tipe
                 if tipe == "Pemasukan":
                     filtered_categories = income_categories
                 else:
@@ -130,7 +128,6 @@ if client:
                     df = pd.DataFrame(data)
                     st.dataframe(df, use_container_width=True)
                     
-                    # Ringkasan Total
                     st.subheader("Ringkasan Total")
                     if "Tipe" in df.columns and "Nominal" in df.columns:
                         total_exp = df[df["Tipe"] == "Pengeluaran"]["Nominal"].sum()
