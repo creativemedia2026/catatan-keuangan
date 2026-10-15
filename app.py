@@ -14,13 +14,12 @@ st.write("Catat pemasukan dan pengeluaran harianmu dengan mudah, terhubung langs
 # --- Fungsi Bantu Format Angka ke Rupiah ---
 def format_rupiah(value):
     try:
-        # Menghapus karakter selain angka
         clean_val = "".join(filter(str.isdigit, str(value)))
         if clean_val:
             return f"{int(clean_val):,}".replace(",", ".")
     except:
         pass
-    return ""
+    return "0"
 
 def parse_rupiah(value):
     try:
@@ -149,7 +148,6 @@ if client:
                 sub_kategori = st.selectbox("Sub-Kategori (Opsional / Spesifik)", ["--Tidak Ada / Opsional--"] + sub_categories_list)
 
             with st.form("transaction_form", clear_on_submit=False):
-                # Input Nominal menggunakan teks supaya bebas dari angka 0 kaku
                 nominal_input = st.text_input("Nominal (Rp)", placeholder="Contoh: 20000 atau 20.000")
                 
                 akun = st.selectbox("Akun / Sumber Dana", ["--Pilih Akun--"] + accounts)
@@ -179,7 +177,9 @@ if client:
                             sub_val = "" if sub_kategori == "--Tidak Ada / Opsional--" else sub_kategori
                             row_data = [str(tgl), waktu.strftime('%H:%M'), tipe, kategori_global, sub_val, nominal, akun, catatan]
                             trans_sheet.append_row(row_data)
-                            st.success(f"✅ Transaksi senilai Rp {format_rupiah(nominal)},- berhasil dicatat!")
+                            
+                            formatted_nom = format_rupiah(nominal)
+                            st.success(f"✅ Transaksi senilai Rp {formatted_nom},- berhasil dicatat!")
                         except Exception as e:
                             st.error(f"Gagal menyimpan ke Google Sheets: {e}")
 
@@ -190,18 +190,25 @@ if client:
                 data = trans_sheet.get_all_records()
                 if data:
                     df = pd.DataFrame(data)
+                    # Format kolom Nominal di tabel agar cantik dengan titik
+                    if "Nominal" in df.columns:
+                        df["Nominal"] = df["Nominal"].apply(lambda x: f"Rp {format_rupiah(x)},-" if str(x).isdigit() else x)
+                    
                     st.dataframe(df, use_container_width=True)
                     
                     st.subheader("Ringkasan Total")
                     if "Tipe" in df.columns and "Nominal" in df.columns:
-                        total_exp = df[df["Tipe"] == "Pengeluaran"]["Nominal"].sum()
-                        total_inc = df[df["Tipe"] == "Pemasukan"]["Nominal"].sum()
+                        # Parsing balik ke angka untuk penjumlahan
+                        raw_df = pd.DataFrame(data)
+                        raw_df["Nominal_Clean"] = raw_df["Nominal"].apply(parse_rupiah)
+                        total_exp = raw_df[raw_df["Tipe"] == "Pengeluaran"]["Nominal_Clean"].sum()
+                        total_inc = raw_df[raw_df["Tipe"] == "Pemasukan"]["Nominal_Clean"].sum()
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            st.metric("Total Pemasukan", f"Rp {total_inc:,.0f}")
+                            st.metric("Total Pemasukan", f"Rp {format_rupiah(total_inc)},-")
                         with col2:
-                            st.metric("Total Pengeluaran", f"Rp {total_exp:,.0f}")
+                            st.metric("Total Pengeluaran", f"Rp {format_rupiah(total_exp)},-")
                 else:
                     st.info("Belum ada data transaksi yang tercatat.")
             except Exception as e:
@@ -233,8 +240,8 @@ if client:
                     
                     row_options = []
                     for idx, r in enumerate(rows, start=2):
-                        nom_str = f"Rp {int(r[5]):,}".replace(",", ".") if r[5].isdigit() else r[5]
-                        summary = f"Baris {idx} | Tgl: {r[0]} | {r[2]} | {r[3]} | {nom_str},-"
+                        nom_str = f"Rp {format_rupiah(r[5])},-" if len(r) > 5 else "Rp 0,-"
+                        summary = f"Baris {idx} | Tgl: {r[0]} | {r[2]} | {r[3]} | {nom_str}"
                         row_options.append((idx, summary))
                     
                     selected_item = st.selectbox("Pilih Transaksi yang Ingin Diedit/Dihapus", row_options, format_func=lambda x: x[1])
