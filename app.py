@@ -10,7 +10,7 @@ st.set_page_config(page_title="Pencatatan Keuangan & Anggaran", page_icon="💰"
 st.title("💰 Aplikasi Keuangan & Anggaran Pribadi")
 st.write("Catat pemasukan dan pengeluaran harianmu dengan mudah, terhubung langsung ke Google Sheets!")
 
-# --- Koneksi ke Google Sheets (Tanpa Cache untuk Data Sheet agar Selalu Update) ---
+# --- Koneksi ke Google Sheets ---
 def get_google_sheet_client():
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
@@ -37,7 +37,7 @@ if client:
         sh = None
 
     if sh:
-        # 1. Mengambil Kategori Berdasarkan Tipe secara Langsung dari Tab 'Categories'
+        # 1. Mengambil Kategori Berdasarkan Tipe dari Tab 'Categories'
         expense_categories = []
         income_categories = []
         
@@ -83,18 +83,17 @@ if client:
         if menu == "Catat Transaksi Baru":
             st.header("📝 Input Transaksi Harian")
             
-            with st.form("transaction_form", clear_on_submit=True):
-                tgl = st.date_input("Tanggal", datetime.now())
-                
-                # Pilihan Tipe Transaksi
-                tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"])
-                
-                # Pemilihan kategori dinamis berdasarkan pilihan tipe
-                if tipe == "Pemasukan":
-                    filtered_categories = income_categories
-                else:
-                    filtered_categories = expense_categories
+            # Pilihan Tipe Transaksi ditaruh di luar form agar reaktif (langsung merender ulang kategori)
+            tgl = st.date_input("Tanggal", datetime.now())
+            tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"])
+            
+            # Menyesuaikan list kategori berdasarkan pilihan tipe di luar form
+            if tipe == "Pemasukan":
+                filtered_categories = income_categories
+            else:
+                filtered_categories = expense_categories
 
+            with st.form("transaction_form", clear_on_submit=False):
                 kategori = st.selectbox("Kategori", filtered_categories)
                 nominal = st.number_input("Nominal (Rp)", min_value=0, step=1000)
                 akun = st.selectbox("Akun / Sumber Dana", accounts)
