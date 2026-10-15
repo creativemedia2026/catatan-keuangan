@@ -29,7 +29,7 @@ def init_connection():
 client = init_connection()
 
 if client:
-    SPREADSHEET_NAME = "Anggaran" # Pastikan judul file Google Sheets kamu sesuai
+    SPREADSHEET_NAME = "Sheet Anggaran" # Pastikan judul file Google Sheets kamu sesuai
     
     try:
         sh = client.open(SPREADSHEET_NAME)
