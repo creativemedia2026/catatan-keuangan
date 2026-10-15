@@ -11,6 +11,24 @@ st.set_page_config(page_title="Pencatatan Keuangan & Anggaran", page_icon="💰"
 st.title("💰 Aplikasi Keuangan & Anggaran Pribadi")
 st.write("Catat pemasukan dan pengeluaran harianmu dengan mudah, terhubung langsung ke Google Sheets!")
 
+# --- Fungsi Bantu Format Angka ke Rupiah ---
+def format_rupiah(value):
+    try:
+        # Menghapus karakter selain angka
+        clean_val = "".join(filter(str.isdigit, str(value)))
+        if clean_val:
+            return f"{int(clean_val):,}".replace(",", ".")
+    except:
+        pass
+    return ""
+
+def parse_rupiah(value):
+    try:
+        clean_val = "".join(filter(str.isdigit, str(value)))
+        return int(clean_val) if clean_val else 0
+    except:
+        return 0
+
 # --- Koneksi ke Google Sheets ---
 def get_google_sheet_client():
     try:
@@ -131,17 +149,16 @@ if client:
                 sub_kategori = st.selectbox("Sub-Kategori (Opsional / Spesifik)", ["--Tidak Ada / Opsional--"] + sub_categories_list)
 
             with st.form("transaction_form", clear_on_submit=False):
-                # Menggunakan text_input agar bebas mengetik angka tanpa terganggu angka 0 di depan
-                nominal_raw = st.text_input("Nominal (Rp)", value="", placeholder="Contoh: 20000 atau 20.000")
+                # Input Nominal menggunakan teks supaya bebas dari angka 0 kaku
+                nominal_input = st.text_input("Nominal (Rp)", placeholder="Contoh: 20000 atau 20.000")
+                
                 akun = st.selectbox("Akun / Sumber Dana", ["--Pilih Akun--"] + accounts)
                 catatan = st.text_input("Catatan Tambahan (Opsional)")
                 
                 submit_button = st.form_submit_button(label="Simpan Transaksi")
                 
                 if submit_button:
-                    # Membersihkan format teks nominal (menghilangkan titik, koma, spasi, atau karakter selain angka)
-                    clean_nominal_str = "".join(filter(str.isdigit, nominal_raw))
-                    nominal_val = int(clean_nominal_str) if clean_nominal_str else 0
+                    nominal = parse_rupiah(nominal_input)
                     
                     if tipe == "--Pilih Tipe Transaksi--":
                         st.warning("⚠️ Silakan pilih Tipe Transaksi terlebih dahulu.")
@@ -149,7 +166,7 @@ if client:
                         st.warning("⚠️ Silakan pilih Kategori Global terlebih dahulu.")
                     elif akun == "--Pilih Akun--":
                         st.warning("⚠️ Silakan pilih Akun / Sumber Dana terlebih dahulu.")
-                    elif nominal_val <= 0:
+                    elif nominal <= 0:
                         st.warning("⚠️ Nominal harus lebih besar dari 0.")
                     else:
                         try:
@@ -160,13 +177,9 @@ if client:
                                 trans_sheet.append_row(["Tanggal", "Jam", "Tipe", "Kategori Global", "Sub-Kategori", "Nominal", "Akun", "Catatan"])
                             
                             sub_val = "" if sub_kategori == "--Tidak Ada / Opsional--" else sub_kategori
-                            
-                            # Format tampilan nominal rapi dengan pemisah ribuan dan suffix ,-
-                            formatted_nominal = f"{nominal_val:,.0f},-".replace(",", ".")
-                            
-                            row_data = [str(tgl), waktu.strftime('%H:%M'), tipe, kategori_global, sub_val, formatted_nominal, akun, catatan]
+                            row_data = [str(tgl), waktu.strftime('%H:%M'), tipe, kategori_global, sub_val, nominal, akun, catatan]
                             trans_sheet.append_row(row_data)
-                            st.success(f"✅ Transaksi sebesar Rp {formatted_nominal} berhasil dicatat!")
+                            st.success(f"✅ Transaksi senilai Rp {format_rupiah(nominal)},- berhasil dicatat!")
                         except Exception as e:
                             st.error(f"Gagal menyimpan ke Google Sheets: {e}")
 
@@ -178,6 +191,17 @@ if client:
                 if data:
                     df = pd.DataFrame(data)
                     st.dataframe(df, use_container_width=True)
+                    
+                    st.subheader("Ringkasan Total")
+                    if "Tipe" in df.columns and "Nominal" in df.columns:
+                        total_exp = df[df["Tipe"] == "Pengeluaran"]["Nominal"].sum()
+                        total_inc = df[df["Tipe"] == "Pemasukan"]["Nominal"].sum()
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Total Pemasukan", f"Rp {total_inc:,.0f}")
+                        with col2:
+                            st.metric("Total Pengeluaran", f"Rp {total_exp:,.0f}")
                 else:
                     st.info("Belum ada data transaksi yang tercatat.")
             except Exception as e:
@@ -209,7 +233,8 @@ if client:
                     
                     row_options = []
                     for idx, r in enumerate(rows, start=2):
-                        summary = f"Baris {idx} | Tgl: {r[0]} | {r[2]} | {r[3]} | {r[5]}"
+                        nom_str = f"Rp {int(r[5]):,}".replace(",", ".") if r[5].isdigit() else r[5]
+                        summary = f"Baris {idx} | Tgl: {r[0]} | {r[2]} | {r[3]} | {nom_str},-"
                         row_options.append((idx, summary))
                     
                     selected_item = st.selectbox("Pilih Transaksi yang Ingin Diedit/Dihapus", row_options, format_func=lambda x: x[1])
@@ -224,10 +249,13 @@ if client:
                         with st.form("edit_form"):
                             edit_tgl = st.date_input("Tanggal", datetime.strptime(current_data[0], "%Y-%m-%d").date() if current_data[0] else now_wib.date())
                             edit_jam = current_data[1] if len(current_data) > 1 else "12:00"
-                            edit_tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"], index=0 if len(current_data) > 2 and current_data[2] == "Pengeluaran" else 1)
+                            edit_tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"], index=0 if current_data[2] == "Pengeluaran" else 1)
                             edit_kat = st.text_input("Kategori Global", value=current_data[3] if len(current_data) > 3 else "")
                             edit_subkat = st.text_input("Sub-Kategori", value=current_data[4] if len(current_data) > 4 else "")
-                            edit_nominal = st.text_input("Nominal (Rp)", value=current_data[5] if len(current_data) > 5 else "")
+                            
+                            def_nom_str = current_data[5] if len(current_data) > 5 else "0"
+                            edit_nominal_input = st.text_input("Nominal (Rp)", value=def_nom_str)
+                            
                             edit_akun = st.text_input("Akun", value=current_data[6] if len(current_data) > 6 else "")
                             edit_catatan = st.text_input("Catatan", value=current_data[7] if len(current_data) > 7 else "")
                             
@@ -238,7 +266,8 @@ if client:
                                 delete_btn = st.form_submit_button("🗑️ Hapus Transaksi")
                             
                             if update_btn:
-                                updated_row = [str(edit_tgl), edit_jam, edit_tipe, edit_kat, edit_subkat, edit_nominal, edit_akun, edit_catatan]
+                                parsed_nom = parse_rupiah(edit_nominal_input)
+                                updated_row = [str(edit_tgl), edit_jam, edit_tipe, edit_kat, edit_subkat, str(parsed_nom), edit_akun, edit_catatan]
                                 trans_sheet.update(f"A{target_row_idx}:H{target_row_idx}", [updated_row])
                                 st.success(f"✅ Transaksi pada baris ke-{target_row_idx} berhasil diperbarui!")
                                 st.rerun()
