@@ -37,32 +37,46 @@ if client:
         sh = None
 
     if sh:
-        # 1. Mengambil Kategori Berdasarkan Tipe dari Tab 'Categories'
-        expense_categories = []
-        income_categories = []
-        
+        # 1. Mengambil Kategori Global & Sub-Kategori dari Tab 'Categories'
+        category_rows = []
         try:
             cat_sheet = sh.worksheet("Categories")
-            all_rows = cat_sheet.get_all_values()[1:] # Skip header
-            
-            for row in all_rows:
-                if len(row) >= 2:
-                    cat_name = row[0].strip()
-                    cat_type = row[1].strip().lower()
-                    
-                    if cat_name:
-                        if "pemasukan" in cat_type:
-                            income_categories.append(cat_name)
-                        elif "pengeluaran" in cat_type:
-                            expense_categories.append(cat_name)
+            category_rows = cat_sheet.get_all_values()[1:] # Skip header
         except Exception as e:
             st.warning(f"Gagal membaca kategori: {e}")
 
-        # Fallback cadangan jika kosong
-        if not expense_categories:
-            expense_categories = ["Bensin", "Anggaran Makan"]
-        if not income_categories:
-            income_categories = ["Gaji", "Bunga Tabungan", "Other Income", "Transfer Masuk", "Penggantian"]
+        # Parsing data kategori (Global, Sub-Kategori, Tipe)
+        expense_dict = {} # Format: {Kategori_Global: [sub1, sub2, ...]}
+        income_dict = {}
+        
+        for row in category_rows:
+            if len(row) >= 3:
+                global_cat = row[0].strip()
+                sub_cat = row[1].strip()
+                cat_type = row[2].strip().lower()
+                
+                if global_cat:
+                    target_dict = income_dict if "pemasukan" in cat_type else expense_dict
+                    if global_cat not in target_dict:
+                        target_dict[global_cat] = set()
+                    if sub_cat:
+                        target_dict[global_cat].add(sub_cat)
+
+        # Fallback cadangan jika sheet kosong
+        if not expense_dict:
+            expense_dict = {
+                "Transportasi": {"Bensin", "Parkir"},
+                "Makanan & Minuman": {"Makan Siang", "Sarapan", "Makan Malam"}
+            }
+        if not income_dict:
+            income_dict = {
+                "Pendapatan Utama": {"Gaji"},
+                "Lain-lain": {"Other Income", "Transfer Masuk"}
+            }
+
+        # Urutkan abjad untuk Kategori Global
+        expense_globals = sorted(list(expense_dict.keys()))
+        income_globals = sorted(list(income_dict.keys()))
 
         # 2. Mengambil Daftar Akun dari Tab 'Accounts'
         accounts = []
@@ -76,6 +90,9 @@ if client:
         
         if not accounts:
             accounts = ["BCA", "Gopay", "Dana", "Cash", "BPR WM"]
+        
+        # Urutkan abjad untuk Akun
+        accounts = sorted(accounts)
 
         # --- Menu Navigasi ---
         menu = st.sidebar.selectbox("Pilih Menu", ["Catat Transaksi Baru", "Lihat Riwayat & Anggaran"])
@@ -83,40 +100,69 @@ if client:
         if menu == "Catat Transaksi Baru":
             st.header("📝 Input Transaksi Harian")
             
-            # Pilihan Tipe Transaksi ditaruh di luar form agar reaktif (langsung merender ulang kategori)
             tgl = st.date_input("Tanggal", datetime.now())
-            tipe = st.selectbox("Tipe Transaksi", ["Pengeluaran", "Pemasukan"])
             
-            # Menyesuaikan list kategori berdasarkan pilihan tipe di luar form
+            # Pilihan Tipe Transaksi dengan Default Placeholder
+            tipe_options = ["--Pilih Tipe Transaksi--", "Pengeluaran", "Pemasukan"]
+            tipe = st.selectbox("Tipe Transaksi", tipe_options)
+            
+            global_categories = []
+            current_dict = {}
             if tipe == "Pemasukan":
-                filtered_categories = income_categories
-            else:
-                filtered_categories = expense_categories
+                global_categories = income_globals
+                current_dict = income_dict
+            elif tipe == "Pengeluaran":
+                global_categories = expense_globals
+                current_dict = expense_dict
+
+            # Pilihan Kategori Global dengan Default Placeholder
+            kategori_global = "--Pilih Kategori--"
+            if tipe != "--Pilih Tipe Transaksi--":
+                kategori_global = st.selectbox("Kategori Global", ["--Pilih Kategori--"] + global_categories)
+
+            # Menyiapkan Sub-Kategori jika Kategori Global sudah dipilih
+            sub_categories_list = []
+            if kategori_global != "--Pilih Kategori--":
+                sub_categories_list = sorted(list(current_dict.get(kategori_global, set())))
+
+            sub_kategori = "--Tidak Ada / Opsional--"
+            if sub_categories_list:
+                sub_kategori = st.selectbox("Sub-Kategori (Opsional / Spesifik)", ["--Tidak Ada / Opsional--"] + sub_categories_list)
 
             with st.form("transaction_form", clear_on_submit=False):
-                kategori = st.selectbox("Kategori", filtered_categories)
                 nominal = st.number_input("Nominal (Rp)", min_value=0, step=1000)
-                akun = st.selectbox("Akun / Sumber Dana", accounts)
+                
+                akun = st.selectbox("Akun / Sumber Dana", ["--Pilih Akun--"] + accounts)
                 catatan = st.text_input("Catatan Tambahan (Opsional)")
                 
                 submit_button = st.form_submit_button(label="Simpan Transaksi")
                 
                 if submit_button:
-                    if nominal > 0:
+                    # Validasi input lengkap
+                    if tipe == "--Pilih Tipe Transaksi--":
+                        st.warning("⚠️ Silakan pilih Tipe Transaksi terlebih dahulu.")
+                    elif kategori_global == "--Pilih Kategori--":
+                        st.warning("⚠️ Silakan pilih Kategori Global terlebih dahulu.")
+                    elif akun == "--Pilih Akun--":
+                        st.warning("⚠️ Silakan pilih Akun / Sumber Dana terlebih dahulu.")
+                    elif nominal <= 0:
+                        st.warning("⚠️ Nominal harus lebih besar dari 0.")
+                    else:
                         try:
                             try:
                                 trans_sheet = sh.worksheet("Transactions")
                             except:
-                                trans_sheet = sh.add_worksheet(title="Transactions", rows=1000, cols=6)
-                                trans_sheet.append_row(["Tanggal", "Tipe", "Kategori", "Nominal", "Akun", "Catatan"])
+                                trans_sheet = sh.add_worksheet(title="Transactions", rows=1000, cols=7)
+                                trans_sheet.append_row(["Tanggal", "Tipe", "Kategori Global", "Sub-Kategori", "Nominal", "Akun", "Catatan"])
                             
-                            row_data = [str(tgl), tipe, kategori, nominal, akun, catatan]
+                            # Tentukan nilai simpan sub-kategori
+                            sub_val = "" if sub_kategori == "--Tidak Ada / Opsional--" else sub_kategori
+                            
+                            row_data = [str(tgl), tipe, kategori_global, sub_val, nominal, akun, catatan]
                             trans_sheet.append_row(row_data)
                             st.success("✅ Transaksi berhasil dicatat dan dikirim ke Google Sheets!")
                         except Exception as e:
                             st.error(f"Gagal menyimpan ke Google Sheets: {e}")
-                    else:
-                        st.warning("⚠️ Nominal harus lebih besar dari 0.")
 
         elif menu == "Lihat Riwayat & Anggaran":
             st.header("📊 Ringkasan & Riwayat Transaksi")
